@@ -3,87 +3,93 @@
 # Examples
 #
 #   include mysql
-class mysql {
-  require mysql::config
-  require homebrew
+class mysql(
+  $bind_address = $mysql::params::bind_address,
+  $configfile   = $mysql::params::configfile,
+  $datadir      = $mysql::params::datadir,
+  $ensure       = 'present',
+  $logdir       = $mysql::params::logdir,
+  $logerror     = $mysql::params::logerror,
+  $mysqladmin   = $mysql::params::mysqladmin,
+  $mysqld_safe  = $mysql::params::mysqld,
+  $port         = $mysql::params::port,
+  $socket       = $mysql::params::socket,
+) inherits mysql::params {
 
-  file { [
-    $mysql::config::configdir,
-    $mysql::config::datadir,
-    $mysql::config::logdir
-  ]:
-    ensure => directory,
+  file {
+    [
+      $mysql::params::configdir,
+      $mysql::datadir,
+      $mysql::params::logdir
+    ]:
+      ensure => directory ;
+    $mysql::params::configfile:
+      content => template('mysql/my.cnf.erb'),
+      notify  => Service['mysql'] ;
   }
 
-  file { $mysql::config::configfile:
-    content => template('mysql/my.cnf.erb'),
-    notify  => Service['dev.mysql'],
+  package { 'mysql':
+    ensure => $mysql::ensure,
+    name   => $mysql::params::package,
+    notify => Service['mysql']
   }
 
-  file { "${boxen::config::homebrewdir}/etc/my.cnf":
-    ensure  => link,
-    require => [
-      Package['boxen/brews/mysql'],
-      File[$mysql::config::configfile],
-      Class['homebrew']
-    ],
-    target  => $mysql::config::configfile,
-  }
-
-  file { '/Library/LaunchDaemons/dev.mysql.plist':
-    content => template('mysql/dev.mysql.plist.erb'),
-    group   => 'wheel',
-    notify  => Service['dev.mysql'],
-    owner   => 'root'
-  }
-
-  homebrew::formula { 'mysql':
-    before => Package['boxen/brews/mysql'],
-  }
-
-  package { 'boxen/brews/mysql':
-    ensure => '5.5.20-boxen2',
-    notify => Service['dev.mysql']
-  }
-
-  file { "${boxen::config::homebrewdir}/var/mysql":
-    ensure  => absent,
-    force   => true,
-    recurse => true,
-    require => Package['boxen/brews/mysql'],
-  }
-
-  exec { 'init-mysql-db':
-    command  => "mysql_install_db \
-      --verbose \
-      --basedir=${boxen::config::homebrewdir} \
-      --datadir=${mysql::config::datadir} \
-      --tmpdir=/tmp",
-    creates  => "${mysql::config::datadir}/mysql",
-    provider => shell,
-    require  => [
-      Package['boxen/brews/mysql'],
-      File["${boxen::config::homebrewdir}/var/mysql"]
-    ],
-    notify   => Service['dev.mysql']
-  }
-
-  service { 'dev.mysql':
+  service { 'mysql':
     ensure  => running,
+    name    => $mysql::params::service,
     notify  => Exec['wait-for-mysql'],
   }
 
-  service { 'com.boxen.mysql': # replaced by dev.mysql
-    before => Service['dev.mysql'],
-    enable => false
+  case $::osfamily {
+    'Darwin': {
+      require homebrew
+
+      file { "${boxen::config::homebrewdir}/etc/my.cnf":
+        ensure  => link,
+        require => [
+          Package['mysql'],
+          File[$mysql::params::configfile],
+          Class['homebrew']
+        ],
+        target  => $mysql::params::configfile,
+      }
+
+      file { '/Library/LaunchDaemons/mysql.plist':
+        content => template('mysql/dev.mysql.plist.erb'),
+        group   => 'wheel',
+        notify  => Service['mysql'],
+        owner   => 'root'
+      }
+
+      homebrew::formula { 'mysql':
+        before => Package['mysql'],
+      }
+
+      file { "${boxen::config::homebrewdir}/var/mysql":
+        ensure  => absent,
+        force   => true,
+        recurse => true,
+        require => Package['mysql'],
+      }
+
+      exec { 'init-mysql-db':
+        command  => "mysql_install_db \
+          --verbose \
+          --basedir=${boxen::config::homebrewdir} \
+          --datadir=${mysql::datadir} \
+          --tmpdir=/tmp",
+        creates  => "${mysql::datadir}/mysql",
+        provider => shell,
+        require  => [
+          Package['mysql'],
+          File["${boxen::config::homebrewdir}/var/mysql"]
+        ],
+        notify   => Service['mysql']
+      }
+    }
   }
 
-  file { "${boxen::config::envdir}/mysql.sh":
-    content => template('mysql/env.sh.erb'),
-    require => File[$boxen::config::envdir]
-  }
-
-  $nc = "/usr/bin/nc -z localhost ${mysql::config::port}"
+  $nc = "/usr/bin/nc -z ${mysql::bind_address} ${mysql::port}"
 
   exec { 'wait-for-mysql':
     command     => "while ! ${nc}; do sleep 1; done",
@@ -94,9 +100,9 @@ class mysql {
 
   exec { 'mysql-tzinfo-to-sql':
     command     => "mysql_tzinfo_to_sql /usr/share/zoneinfo | \
-      mysql -u root mysql -P ${mysql::config::port} -S ${mysql::config::socket}",
+      mysql -u root mysql -P ${mysql::port} -S ${mysql::socket}",
     provider    => shell,
-    creates     => "${mysql::config::datadir}/.tz_info_created",
+    creates     => "${mysql::datadir}/.tz_info_created",
     subscribe   => Exec['wait-for-mysql'],
     refreshonly => true
   }
