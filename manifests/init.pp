@@ -11,7 +11,7 @@ class mysql(
   $logdir       = $mysql::params::logdir,
   $logerror     = $mysql::params::logerror,
   $mysqladmin   = $mysql::params::mysqladmin,
-  $mysqld_safe  = $mysql::params::mysqld,
+  $mysqld_safe  = $mysql::params::mysqld_safe,
   $port         = $mysql::params::port,
   $socket       = $mysql::params::socket,
 ) inherits mysql::params {
