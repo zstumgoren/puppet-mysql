@@ -54,7 +54,7 @@ class mysql(
         target  => $mysql::params::configfile,
       }
 
-      file { '/Library/LaunchDaemons/mysql.plist':
+      file { '/Library/LaunchDaemons/dev.mysql.plist':
         content => template('mysql/dev.mysql.plist.erb'),
         group   => 'wheel',
         notify  => Service['mysql'],
